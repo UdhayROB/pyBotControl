@@ -1,6 +1,8 @@
 '''
+Author - Udhaya Kumar Parameswaran
+Date - 26-May-2024
+
 Enable pigpio in auto-start by- sudo systemctl enable pigpiod
-When q1 moves 90 dgrees, q2 had to move 55 degrees to keep them in a straight line
 '''
 
 import sys
@@ -9,7 +11,6 @@ import RPi.GPIO as GPIO
 import datetime
 from time import sleep
 import pygame
-import threading
 import copy
 import math
 
@@ -90,16 +91,20 @@ class stepperNEMA17():
 
         def move_relative(self, angle: float):
                 if (angle == 0): return
-                if (((angle + self.currentPosition) < self.minTravel) or ((angle + self.currentPosition) > self.maxTravel)): return
+                if (((angle + self.currentPosition) < self.minTravel) or ((angle + self.currentPosition) > self.maxTravel)): ret>
                 for step in range(0, int(self.stepsPerUnit * abs(angle))):
                         if(angle < 0):
                                 GPIO.output(self.directionPin, True)
-                                if(self.name == "Motor2"):
+                                if(self.name == "Motor1"):
+                                        GPIO.output(self.directionPin, False)
+                                elif(self.name == "Motor2"):
                                         GPIO.output(motor3.directionPin, True)
                                 self.currentPosition -= (1/self.stepsPerUnit)
                         else:
                                 GPIO.output(self.directionPin, False)
-                                if(self.name == "Motor2"):
+                                if(self.name == "Motor1"):
+                                        GPIO.output(self.directionPin, True)
+                                elif(self.name == "Motor2"):
                                         GPIO.output(motor3.directionPin, False)
                                 self.currentPosition += (1/self.stepsPerUnit)
                         GPIO.output(self.stepPin, True)
@@ -114,7 +119,6 @@ class stepperNEMA17():
 
         def motor_stop(self):
                 self.stop = True
-                GPIO.output(motor3.stepPin, False)
 
 def inverseKinematics(x: float, y: float):
         if(x == 0): x=0.1 #To avoid atan(inf)
@@ -124,14 +128,11 @@ def inverseKinematics(x: float, y: float):
         except ValueError:
                 return 0,0,False
         return math.degrees(q1),math.degrees(q2),True
-        #return q2
 
 def forwardKinematics(q1Deg: float, q2Deg: float):
         q1 = math.radians(q1Deg)
         q2 = math.radians(q2Deg)
         x = (robotArm3Lengthmm * math.cos(q1+q2)) + (robotArm2Lengthmm * math.cos(q1))
-        #if(q2Deg < 0):
-        #       x = -((robotArm3Lengthmm * math.cos(q1+q2)) + (robotArm2Lengthmm * math.cos(q1)))
         y = (robotArm3Lengthmm * math.sin(q1+q2)) + (robotArm2Lengthmm * math.sin(q1))
         return x,y
 
@@ -139,7 +140,6 @@ def moveRelativePosition(x: float, y:float):
         currentq1, currentq2 = motor2.currentPosition, motor3.currentPosition
         currentX, currentY = forwardKinematics(currentq1, currentq2)
         targetX, targetY = currentX + x, currentY + y
-        #print(currentq1,currentq2,currentX,currentY,targetX,targetY)
         targetq1, targetq2, success = inverseKinematics(targetX, targetY)
         minMaxAnglesCheck = (targetq1 >= robotArm2MinAngledeg) and (targetq1 <= robotArm2MaxAngledeg)  and (targetq2 >= robotArm2MinAng>
         if(success and minMaxAnglesCheck ):
@@ -147,7 +147,24 @@ def moveRelativePosition(x: float, y:float):
                 motor3.move_relative(targetq2 - currentq2)
                 if(panLock):
                         servo1.set_angle(180-targetq2-targetq1)
-        #print(currentq1,currentq2,targetq1,targetq2,currentX,currentY,targetX,targetY)
+
+def moveToPosition(x: int, y:int, z: int):
+        currentq1, currentq2 = motor2.currentPosition, motor3.currentPosition
+        currentX, currentY = forwardKinematics(currentq1, currentq2)
+        currentZ = motor1.currentPosition
+        targetX, targetY, targetZ = x, y, z
+        targetq1, targetq2, success = inverseKinematics(targetX, targetY)
+        minMaxAnglesCheck1 = (targetZ >= robotArm1MinLengthmm) and (targetZ <= robotArm1MaxLengthmm)
+        minMaxAnglesCheck2 = (targetq1 >= robotArm2MinAngledeg) and (targetq1 <= robotArm2MaxAngledeg)
+        minMaxAnglesCheck3 = (targetq2 >= robotArm3MinAngledeg) and (targetq2 <= robotArm3MaxAngledeg)
+        print(currentX, currentY, currentZ, targetX, targetY, targetZ)
+        print(currentq1,currentq2, currentZ, targetq1, targetq2, targetZ)
+        if(success and minMaxAnglesCheck1 and minMaxAnglesCheck2 and minMaxAnglesCheck3 ):
+                motor1.move_relative(targetZ - currentZ)
+                motor2.move_relative(targetq1 - currentq1)
+                motor3.move_relative(targetq2 - currentq2)
+                if(panLock):
+                        servo1.set_angle(180-targetq2-targetq1)
 
 def goToHomePosition():
         servo1.set_angle_easing(90, 0.5)
@@ -179,8 +196,6 @@ def goToHomePosition():
         motor3.move_relative(-50)
         motor3.currentPosition = 90
         GPIO.output(motorsEnablePin, False)
-        #motor2.move_relative(45)
-        #motor3.move_relative(45)
 
 #Pin Declarations
 GPIO.setmode(GPIO.BCM)
@@ -231,11 +246,8 @@ GPIO.setup(motorsEnablePin, GPIO.OUT)
 GPIO.output(motorsEnablePin, False)
 
 def main():
-        #motor1.move_relative(10 * -1)
-        #print(inverseKinematics(1,100))
         goToHomePosition()
-        #moveRelativePosition(80,130,100)
-        choice = input('1. Teleoperate Individual Motors\n2. Teleoperate TCP\n3. Go to point\n')
+        choice = input('1. Teleoperate Individual Motors\n2. Teleoperate TCP\n3. Go to point\n4. Go Home')
         match choice:
                 case '1':
                         GPIO.output(motorsEnablePin, True)
@@ -243,6 +255,18 @@ def main():
                         pygame.init()
                         pygame.key.set_repeat(1)
                         display = pygame.display.set_mode((300,300))
+                        font = pygame.font.SysFont("Arial", 20)
+                        axis1Text = font.render("Linear - Up  - W  Down - S", True, (255,255,255))
+                        axis2Text = font.render("Arm 1  - Left- A  Right- D", True, (255,255,255))
+                        axis3Text = font.render("Arm 2  - Left- Q  Right- E", True, (255,255,255))
+                        axis4Text = font.render("Pan    - Left- J  Right- L", True, (255,255,255))
+                        axis5Text = font.render("Tilt   - Up  - I  Down - K", True, (255,255,255))
+                        display.blit(axis1Text,(150 - axis1Text.get_width() // 2, 50 - axis1Text.get_height() // 2))
+                        display.blit(axis2Text,(150 - axis1Text.get_width() // 2, 100 - axis1Text.get_height() // 2))
+                        display.blit(axis3Text,(150 - axis1Text.get_width() // 2, 150 - axis1Text.get_height() // 2))
+                        display.blit(axis4Text,(150 - axis1Text.get_width() // 2, 200 - axis1Text.get_height() // 2))
+                        display.blit(axis5Text,(150 - axis1Text.get_width() // 2, 250 - axis1Text.get_height() // 2))
+                        pygame.display.update()
                         while True:
                                 if pygame.event.get(pygame.QUIT): break
                                 pygame.event.clear()
@@ -266,6 +290,18 @@ def main():
                         pygame.init()
                         pygame.key.set_repeat(1)
                         display = pygame.display.set_mode((300,300))
+                        font = pygame.font.SysFont("Arial", 20)
+                        axis1Text = font.render("X    - +ve - D  -ve  - A", True, (255,255,255))
+                        axis2Text = font.render("Y    - +ve - W  -ve  - S", True, (255,255,255))
+                        axis3Text = font.render("Z    - +ve - Q  -ve  - E", True, (255,255,255))
+                        axis4Text = font.render("Pan  - Left- J  Right- L", True, (255,255,255))
+                        axis5Text = font.render("Tilt - Up  - I  Down - K", True, (255,255,255))
+                        display.blit(axis1Text,(150 - axis1Text.get_width() // 2, 50 - axis1Text.get_height() // 2))
+                        display.blit(axis2Text,(150 - axis1Text.get_width() // 2, 100 - axis1Text.get_height() // 2))
+                        display.blit(axis3Text,(150 - axis1Text.get_width() // 2, 150 - axis1Text.get_height() // 2))
+                        display.blit(axis4Text,(150 - axis1Text.get_width() // 2, 200 - axis1Text.get_height() // 2))
+                        display.blit(axis5Text,(150 - axis1Text.get_width() // 2, 250 - axis1Text.get_height() // 2))
+                        pygame.display.update()
                         while True:
                                 if pygame.event.get(pygame.QUIT): break
                                 pygame.event.clear()
@@ -283,8 +319,20 @@ def main():
                                 if keys[pygame.K_i]: servo2.set_angle_easing(servo2.feedbackAngle - 5, 1) #Servo2 - Left
                                 if keys[pygame.K_k]: servo2.set_angle_easing(servo2.feedbackAngle + 5, 1) #Servo2 - Right
 
-                # case '3':
-                #         print('Go to')
+                case '3':
+                        GPIO.output(motorsEnablePin, True)
+                        print('Go to')
+                        x, y, z = input("Enter x, y and z values (mm): ").split()
+                        print(x, y, z)
+                        moveToPosition(int(x),int(y),int(z))
+
+        servo1.close()
+        servo2.close()
+        GPIO.output(motorsEnablePin, False)
+        motor1.motor_stop()
+        motor2.motor_stop()
+        motor3.motor_stop()
+        GPIO.cleanup()
 
 if __name__ == "__main__":
         try:
@@ -295,5 +343,5 @@ if __name__ == "__main__":
                 GPIO.output(motorsEnablePin, False)
                 motor1.motor_stop()
                 motor2.motor_stop()
-                motor2.motor_stop()
+                motor3.motor_stop()
                 GPIO.cleanup()
