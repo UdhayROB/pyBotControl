@@ -14,3 +14,8 @@ Driver and Interface Board Pin out-
 Connections between interfacing board and Raspberry Pi 4b-
 
 ![image](https://github.com/UdhayROB/pyBotControl/assets/143361662/77b4abbf-da01-4e95-97c8-ef52401b9277)
+
+Zeroing method-
+
+https://github.com/user-attachments/assets/40e7f874-04f5-4c4e-9af3-4d8d951acc2b
+
